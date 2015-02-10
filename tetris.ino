@@ -15,7 +15,7 @@
 #define LAT A3
 #define OE  9
 
-using namespace std;
+using namespace std; //bad practice! use std:whatever instead!
 
 
 
@@ -156,6 +156,7 @@ void setup()
   p1_joystick_bounds.y_top = (int)- ((539 - 4) * (sensitivity_joystick));
   p1_joystick_bounds.x_left = (int)- ((502 - 4) * sensitivity_joystick);
   p1_joystick_bounds.y_bottom = (int)((1023 - 539) * sensitivity_joystick);*/
+  
   if (fill_gaps_flag){
     fill_gaps();
   }
@@ -223,7 +224,7 @@ void loop()
 
 
 //This would be better if it was implemented by interupts because you don't know exactly
-//when a move'll be made.It works properly anyway.
+//when a move'll be made.It works properly though.
 
 
   switch(get_move(read_serial_flag)){
@@ -808,25 +809,7 @@ int get_move(boolean read_serial_flag)
   }
 
 }
-/*
-      
-Buscar on my own vs by my own
-kaity melua 9 billions of bicycles 
-lavando el cerebro
-cuanto tiempo tiene tu bebe
-tirada perfecta
-al reves y dado la vuelta
 
-pull
-pole
-pale
-pal
-poll
-pool
-Paul
-pol
-
-*/
 
 int read_joystick()
 {
