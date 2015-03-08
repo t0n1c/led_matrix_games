@@ -1,179 +1,82 @@
-
 #include <StandardCplusplus.h>
 #include <set>
 #include <list>
 #include <iterator>
 #include <algorithm>
 
-#include <Servo.h> 
+#include "tetris.h"
 
-#include "Adafruit_GFX.h"
-#include "RGBmatrixPanel.h"
-#include "piece.h"
+using namespace std; //bad practice...use std:whatever instead!
 
-#define CLK 11
-#define LAT A3
-#define OE  9
-
-using namespace std; //bad practice! use std:whatever instead!
-
-
-
-RGBmatrixPanel * matrix;
 Piece * tetris_piece;
-int * matrix_state, * scored_lines;
+int * scored_lines;
 
-int W,H,initial_x,initial_y,unit_pieces,offset_height,number_of_scored_lines,moves,servo_pin,offset_width;
-uint16_t magenta,blue,cyan,orange,red,yellow,green,white;
-float brightness,sensitivity_joystick,difficulty;
-char previous_move;
-Servo my_servo;
+int initial_x,initial_y,number_of_scored_lines,moves,lines,total_lines;
+
+char previous_move,chosen_move;
+
 //FLAGS
-boolean matrix_rotation,place_tetris_flag,create_piece_flag,read_serial_flag,fill_gaps_flag,
-sticky_method;
+boolean place_tetris_flag,create_piece_flag,sticky_method;
 
 long previous_millis,default_interval,start_move,chance_interval,current_interval;
 unsigned long current_millis;
 
-PointStruct current_unit_pixels_piece [4 * sizeof(PointStruct)];
+PointStruct current_unit_pixels_piece[4 * sizeof(PointStruct)];
 PointStruct next_unit_pixels_piece[4 * sizeof(PointStruct)];
 
-BoundsStruct p1_joystick_bounds,p2_joystick_bounds;
-int p1_joystick_pin_x,p1_joystick_pin_y,p2_joystick_pin_x,p2_joystick_pin_y,joystick_button;
 
-
-//This prototypes are due to I included a port of uClibc++ for Arduino.
-//I had to use with a list of lists of different sizes adding and removing elements
-//so I didn't want to deal with memory management.
-
-set<set<int> > get_chunks();
-set<int> flood_finding(int current_point,set<int> temp_chunk);
-set<set<int> > test_flood();
-
-//TODO hacer generica la funcion game_over y variables meaningfull
-//los sets ocupan demasiada memoria teninedop en cuenta que arduino tiene 8 KB 
-//por tanto si el matrix_state tiene muchos elemtos ala hora de sacar los "sticky chunks"
-//el arduino crashea podemos replantearlo con arrays dinamicos from the scratch pero para 
-//hacerlo eficiente podría ser tedioso.
-
-void setup()
+void tetris_setup()
 {
 
-  /*
-   ##############################
-   #                            #
-   #       INITIALIZATION       #
-   #                            #
-   ##############################
-   
-   */
-
-  matrix = new RGBmatrixPanel(A0, A1, A2, CLK, LAT, OE, false);
-  matrix -> begin();
-  Serial.begin(9600);
-
-  matrix_rotation = true;
   place_tetris_flag = false;
   create_piece_flag = true;
-  read_serial_flag = false;
   sticky_method = true;
-  fill_gaps_flag = false;
-
-  brightness = 0.5;//> 0.8 f*ck your eyesight!!!!!
-  //sensitivity_joystick =  1.0;//joystick accuracy sucks this param is useless
-  difficulty = 0.5;
-
-  /* ORIGINAL ATARI COLORS */
-  magenta = matrix -> ColorHSV360(300, 100, 100 * brightness,true);//L
-  blue = matrix -> ColorHSV360(240, 100, 100 * brightness,true);//square
-  cyan = matrix -> ColorHSV360(180, 100, 100 * brightness,true);//S
-  orange = matrix -> ColorHSV360(37, 100, 100 * brightness,true);//Z
-  red = matrix -> ColorHSV360(0, 100, 100 * brightness,true);//rectangle
-  yellow = matrix -> ColorHSV360(60, 100, 100 * brightness,true);//J
-  green = matrix -> ColorHSV360(120, 100, 100 * brightness,true);//T
-  white = matrix -> ColorHSV360(0,0,100 * brightness,true);//gaps padding
-
-  W = matrix -> width();
-  H = matrix -> height();
-  unit_pieces = 1;
-
-  servo_pin = 37;
-  my_servo.write(100);
-  my_servo.attach(servo_pin);
-  delay(500);
   
-  if (matrix_rotation){
-    matrix -> setRotation(3);
-    H = matrix -> height();
-    W = matrix -> width();
-    //my_servo.write(180);
-    for (int i = 101; i <= 180 ; i++){
-      my_servo.write(i);
-      delay(15);
-    }
-    delay(500);
-  }
-  my_servo.detach();
-
-  //These measures (H and W) dont need to be the same that real dimension of our matrix
-  //H and W are multiples of unit_pieces. Such multiples will be the greatest multiple 
-  //of "unit_pieces" less than or equal to H and W respectively. 
-
-  W = (W - W % unit_pieces) / unit_pieces;
-  H = (H - H % unit_pieces) / unit_pieces;
-
-  matrix_state = (int*) calloc(W * H ,sizeof(int));
+  
   if (sticky_method){
     scored_lines = (int*) malloc(H * sizeof(int));
-  } else {
-    scored_lines = (int*) malloc(4 * sizeof(int));
-  }
-  
+    } else {
+      scored_lines = (int*) malloc(4 * sizeof(int));
+    }
 
-  offset_height = matrix -> height() % unit_pieces;
-  offset_width = matrix -> width() % unit_pieces;
   initial_y = 0;
   initial_x = W/2 - 2;
-  //initial_x = W/2;
   number_of_scored_lines = 0;
   moves = 0;
-
+  total_lines = 0;
   previous_millis = 0L;
-  default_interval = 600 - difficulty * 600;
-  chance_interval = 1000 - difficulty * 700;
+  default_interval = 9600/H - (difficulty * (8000/H));
+  chance_interval = 1000 - difficulty * 650;
   current_interval = default_interval;
   start_move = 0L;
   previous_move = ' ';
 
-  p1_joystick_pin_x = 8;
-  p1_joystick_pin_y = 9;
-  p2_joystick_pin_x = 10;
-  p2_joystick_pin_y = 11;
-  joystick_button = 47;
-  pinMode(joystick_button, INPUT_PULLUP);
-  
-  /*p1_joystick_bounds.x_right = (int) ((1023 - 502) * sensitivity_joystick);
-  p1_joystick_bounds.y_top = (int)- ((539 - 4) * (sensitivity_joystick));
-  p1_joystick_bounds.x_left = (int)- ((502 - 4) * sensitivity_joystick);
-  p1_joystick_bounds.y_bottom = (int)((1023 - 539) * sensitivity_joystick);*/
-  
-  if (fill_gaps_flag){
-    fill_gaps();
-  }
-
-  randomSeed(analogRead(A5));
-  random(7);random(7);
 }
 
 
-void loop()
+
+void tetris_loop()
 {
+
 
   if (create_piece_flag){
     delete tetris_piece;
 
     switch (random(7)){
-    //switch (0){
+    //switch (4){
+      
+      /* 
+      ORIGINAL ATARI COLORS 
+      magenta -> L
+      blue -> square
+      cyan -> S
+      orange -> Z
+      red -> rectangle
+      yellow -> J
+      green -> T
+      white -> gaps padding
+      */
+
       case 0:
       tetris_piece = new Rectangle(initial_x,initial_y,red);
       break;
@@ -221,97 +124,106 @@ void loop()
     
   }
 
+  //This would be better if it was implemented by interrupts ,specially the "hard down" move (which is on digital)
+  //because interrupts are attached on digital pins by default.It works properly though.
+
+  chosen_move = get_move();
+  if (chosen_move == 'U'){
+    delay(decrease_delay(chosen_move,180,7));
+    //delay(180);
+  } else if(chosen_move == 'P'){
+    previous_move = 'P';
+  }else if (chosen_move == ' '){
+    previous_move = ' ';
+  }else {
+      delay(decrease_delay(chosen_move,130 - difficulty * 70,20));
+  }
+  
 
 
-//This would be better if it was implemented by interupts because you don't know exactly
-//when a move'll be made.It works properly though.
-
-
-  switch(get_move(read_serial_flag)){
+  switch(chosen_move){
     case 'U':
-    tetris_piece -> turn_piece(true);
-    if (get_validated_pixels_piece(tetris_piece)){
-      drawing_procedure(tetris_piece,true);
-      } else {
-        tetris_piece -> turn_piece(false);
-      }
-      break;
+      tetris_piece -> turn_piece(true);
+      if (get_validated_pixels_piece(tetris_piece)){
+        drawing_procedure(tetris_piece,true);
+        } else {
+          tetris_piece -> turn_piece(false);
+        }
+        break;
 
     case 'L':
-    tetris_piece -> set_x(tetris_piece -> get_x() - 1);
-    if (get_validated_pixels_piece(tetris_piece)){
-      drawing_procedure(tetris_piece,true);
+      tetris_piece -> set_x(tetris_piece -> get_x() - 1);
+      if (get_validated_pixels_piece(tetris_piece)){
+        drawing_procedure(tetris_piece,true);
       } else {
-        tetris_piece -> set_x(tetris_piece -> get_x() + 1);
+          tetris_piece -> set_x(tetris_piece -> get_x() + 1);
       }
-      break;
+        break;
 
     case 'R':
-    tetris_piece -> set_x(tetris_piece -> get_x() + 1);
-    if (get_validated_pixels_piece(tetris_piece)){
-      drawing_procedure(tetris_piece,true);
-      } else {
-        tetris_piece -> set_x(tetris_piece -> get_x() - 1);
-      }
-      break;
+      tetris_piece -> set_x(tetris_piece -> get_x() + 1);
+      if (get_validated_pixels_piece(tetris_piece)){
+        drawing_procedure(tetris_piece,true);
+        } else {
+          tetris_piece -> set_x(tetris_piece -> get_x() - 1);
+        }
+        break;
 
     case 'D':
-    tetris_piece -> set_y(tetris_piece -> get_y() + 1);
-    if (get_validated_pixels_piece(tetris_piece)){
-      drawing_procedure(tetris_piece,true);
-      } else {
-        tetris_piece -> set_y(tetris_piece -> get_y() - 1);
-      }    
-
-      break;
-
-    case 'H'://hard down
-    while (1){
       tetris_piece -> set_y(tetris_piece -> get_y() + 1);
       if (get_validated_pixels_piece(tetris_piece)){
         drawing_procedure(tetris_piece,true);
         } else {
           tetris_piece -> set_y(tetris_piece -> get_y() - 1);
+        }    
+
+        break;
+
+    case 'P'://hard down
+      while (1){
+        tetris_piece -> set_y(tetris_piece -> get_y() + 1);
+        if (get_validated_pixels_piece(tetris_piece)){
+          drawing_procedure(tetris_piece,true);
+        } else {
+          tetris_piece -> set_y(tetris_piece -> get_y() - 1);
           break;
         }
-        //delay(10);
+          //delay(10);
       }
-      current_millis = 0;
       place_and_tetris();
       create_piece_flag = true;
       place_tetris_flag = false;
       current_interval = default_interval;
       break;
+  }
 
-    }
-
-    current_millis = millis();
-    if (current_millis - previous_millis > current_interval) {
-    //  if (false){
-      previous_millis = current_millis;
-      tetris_piece -> set_y(tetris_piece -> get_y() + 1);
-      if (get_validated_pixels_piece(tetris_piece)){
-        drawing_procedure(tetris_piece,true);
-        if (place_tetris_flag){
-          place_tetris_flag = false;
-          current_interval = default_interval;
-        }
-      } else {
-        tetris_piece -> set_y(tetris_piece -> get_y() - 1);
-        if (place_tetris_flag){
-          //here we place the piece at the current position 
-          place_and_tetris();
-          create_piece_flag = true;
-          place_tetris_flag = false;
-          current_interval = default_interval;
-
-        } else {
-          current_interval = chance_interval;
-          place_tetris_flag = true;
-        }  
+  current_millis = millis();
+  if (!create_piece_flag && current_millis - previous_millis > current_interval) {
+  //if (false){
+    previous_millis = current_millis;
+    tetris_piece -> set_y(tetris_piece -> get_y() + 1);
+    if (get_validated_pixels_piece(tetris_piece)){
+      drawing_procedure(tetris_piece,true);
+      if (place_tetris_flag){
+        place_tetris_flag = false;
+        //current_interval = default_interval;
       }
+    } else {
+      tetris_piece -> set_y(tetris_piece -> get_y() - 1);
+      if (place_tetris_flag){
+        //here we place the piece at the current position 
+        place_and_tetris();
+        create_piece_flag = true;
+        place_tetris_flag = false;
+        //current_interval = default_interval;
+
+      } else {
+        //current_interval = chance_interval;
+        place_tetris_flag = true;
+      }  
     }
   }
+}
 
 
 
@@ -328,114 +240,136 @@ void drawing_procedure(Piece * p,boolean clear_piece)
 
 void place_and_tetris()
 {
-  int above_scored_line,top;
-  int counter = 0;
-  boolean last_line = false;
+
   update_matrix_state();
 
   if (sticky_method){
-    //"based on" flood fill algorithm.This allows chain reaction ¬¬.
-    set<set<int> > chunks;
-    int temp_x,temp_y,current_point;
-    boolean  erase_flag;
-
     while (check_tetris(&number_of_scored_lines,scored_lines)){
-      blink_lines(scored_lines,number_of_scored_lines,2,40);
-      clear_tetris_lines(scored_lines,number_of_scored_lines);
-      set<set<int> > all_chunks = get_chunks();
-      while (!all_chunks.empty()){
-
-        for (set<set<int> >::iterator it = all_chunks.begin(); it != all_chunks.end();) {
-          erase_flag = false;
-          for (set<int>::iterator it_2 = it -> begin(); it_2 !=it -> end();++it_2){
-            if (it -> find((*it_2) + W) == it -> end()){
-                if ((*it_2) + W >= W*H || matrix_state[(*it_2) + W] != 0){
-                  all_chunks.erase(it++);
-                  erase_flag = true;
-                  break;
-              }
-            }
-            
-          }
-          if (!erase_flag) ++it;
-        }
-
-        //update matrix state
-        for (set<set<int> >::iterator it = all_chunks.begin(); it != all_chunks.end(); ++it) {
-          for (set<int>::reverse_iterator it_2 = it -> rbegin(); it_2 !=it -> rend();++it_2){
-            current_point = *it_2;
-            temp_x = current_point % W;
-            temp_y = (current_point - temp_x) / W;
-            temp_x *= unit_pieces;
-            temp_y *= unit_pieces;
-            matrix_state[current_point + W] = matrix_state[current_point];
-            matrix_state[current_point] = 0;
-            (*it_2) = (*it_2) + W;
-
-            for (int i = 0; i < unit_pieces; i++){
-              for (int j = 0; j < unit_pieces; j++){
-                matrix -> drawPixel(temp_x + i,temp_y + j,0);
-                matrix -> drawPixel(temp_x + i,temp_y + j + unit_pieces,matrix_state[(*it_2)]);
-              }
-            }
-          }
-        }
+      total_lines += number_of_scored_lines;
+      sticky_tetris();
+      if (total_lines % 20 == 0){
+        level_up();
       }
-
-      number_of_scored_lines = 0;
-      //delay(50);
     }
 
   } else {
     //naive method
     if (check_tetris(&number_of_scored_lines,scored_lines)){
-      blink_lines(scored_lines,number_of_scored_lines,2,40);
-      clear_tetris_lines(scored_lines,number_of_scored_lines);
-      for (int index = 0; index < number_of_scored_lines; index++){
-        if (index == number_of_scored_lines - 1)
-          last_line = true;
-        above_scored_line = scored_lines[number_of_scored_lines - 1 - index] - 1;
-
-        for (int y = above_scored_line; ;y--){
-          if (!last_line && y == (scored_lines[number_of_scored_lines - 2 - index] - 1))
-            break;
-          if (above_scored_line == -1){//It means the first line is a tetris
-            top = 0;
-            break;
-          } else {
-            for (int x = 0; x < W; x++){
-              matrix_state[(y + (1 + index))*W + x] = matrix_state[y*W + x];
-              if (last_line && matrix_state[y*W + x] == 0)
-                counter++;
-              matrix_state[y*W + x] = 0;
-
-          }
-          
-        }
-
-          
-          if (counter == W){
-            top = y - 1;
-            break;
-          } else { 
-            counter = 0;
-          }
-        }
-
+      total_lines += number_of_scored_lines;
+      naive_tetris();
+      if (total_lines % 20 == 0){
+        level_up();
       }
-
-      //print_matrix_state();
-
-      for (int y = scored_lines[number_of_scored_lines - 1];y>=top; y--){
-        draw_line(y);
-      }
-
     }
-  number_of_scored_lines = 0;
+    number_of_scored_lines = 0;
+  }
+}
+
+
+void sticky_tetris()
+{
+  //"based on" flood fill algorithm.This allows chain reaction ¬¬.
+  set<set<int> > chunks;
+  int temp_x,temp_y,current_point;
+  boolean  erase_flag;
+  blink_lines(scored_lines,number_of_scored_lines,2,40);
+  clear_tetris_lines(scored_lines,number_of_scored_lines);
+  set<set<int> > all_chunks = get_chunks();
+  //Serial.println(free_ram());
+  while (!all_chunks.empty()){
+
+    for (set<set<int> >::iterator it = all_chunks.begin(); it != all_chunks.end();) {
+      erase_flag = false;
+      for (set<int>::iterator it_2 = it -> begin(); it_2 !=it -> end();++it_2){
+        if (it -> find((*it_2) + W) == it -> end()){
+          if ((*it_2) + W >= W*H || matrix_state[(*it_2) + W] != 0){
+            all_chunks.erase(it++);
+            erase_flag = true;
+            break;
+          }
+        }
+        //Serial.println((*it_2));
+        
+
+      }
+      //Serial.println("other chunk");
+      if (!erase_flag) ++it;
+    }
+    //delay(20000);
+
+    //update matrix state
+    for (set<set<int> >::iterator it = all_chunks.begin(); it != all_chunks.end(); ++it) {
+      for (set<int>::reverse_iterator it_2 = it -> rbegin(); it_2 !=it -> rend();++it_2){
+        current_point = *it_2;
+        temp_x = current_point % W;
+        temp_y = (current_point - temp_x) / W;
+        temp_x *= unit_pieces;
+        temp_y *= unit_pieces;
+        matrix_state[current_point + W] = matrix_state[current_point];
+        matrix_state[current_point] = 0;
+        (*it_2) = (*it_2) + W;
+
+        for (int i = 0; i < unit_pieces; i++){
+          for (int j = 0; j < unit_pieces; j++){
+            matrix -> drawPixel(temp_x + i,temp_y + j + offset_height,0);
+            matrix -> drawPixel(temp_x + i,temp_y + j + unit_pieces + offset_height,matrix_state[(*it_2)]);
+          }
+        }
+      }
+    }
   }
 
-
+  number_of_scored_lines = 0;
+  //delay(50);
+    //while(Serial.read() != 'S'){}
 }
+
+
+void naive_tetris()
+{
+  int above_scored_line,top;
+  int counter = 0;
+  boolean last_line = false;
+  blink_lines(scored_lines,number_of_scored_lines,2,40);
+  clear_tetris_lines(scored_lines,number_of_scored_lines);
+  for (int index = 0; index < number_of_scored_lines; index++){
+    if (index == number_of_scored_lines - 1)
+      last_line = true;
+    above_scored_line = scored_lines[number_of_scored_lines - 1 - index] - 1;
+
+    for (int y = above_scored_line; ;y--){
+      if (!last_line && y == (scored_lines[number_of_scored_lines - 2 - index] - 1))
+        break;
+      if (above_scored_line == -1){ //It means the first line is a tetris
+        top = 0;
+        break;
+      } else {
+        for (int x = 0; x < W; x++){
+          matrix_state[(y + (1 + index))*W + x] = matrix_state[y*W + x];
+          if (last_line && matrix_state[y*W + x] == 0)
+            counter++;
+          matrix_state[y*W + x] = 0;
+
+        }
+
+      }
+
+      if (counter == W){
+        top = y - 1;
+        break;
+      } else { 
+        counter = 0;
+      }
+    }
+  }
+
+  //print_matrix_state();
+
+  for (int y = scored_lines[number_of_scored_lines - 1];y>=top; y--){
+    draw_line(y);
+  }
+}
+
 
 boolean check_tetris(int * number_of_scored_lines,int * scored_lines)//int * scored_lines
 {
@@ -446,8 +380,7 @@ boolean check_tetris(int * number_of_scored_lines,int * scored_lines)//int * sco
     for (int x = 0;x < W;x++){
       if (matrix_state[y * W + x] != 0){
         counter++;
-      }
-      else{
+      } else {
         break;
       }
     }
@@ -458,10 +391,7 @@ boolean check_tetris(int * number_of_scored_lines,int * scored_lines)//int * sco
   }
   //Serial.println(*number_of_scored_lines);
   return *number_of_scored_lines > 0;
-
 }
-
-
 
 
 void clear_tetris_lines(int * scored_lines,int number_of_scored_lines)
@@ -486,8 +416,7 @@ void blink_lines(int * scored_lines,int number_of_scored_lines,int number_of_bli
       for (int index = 0; index < number_of_scored_lines ;index++) {
         matrix -> fillRect(0,scored_lines[index] * unit_pieces + offset_height,W * unit_pieces,unit_pieces,0);
       }
-    }
-    else{
+    }else{
       for (int index = 0; index < number_of_scored_lines ;index++){
         draw_line(scored_lines[index]);
       }
@@ -499,26 +428,23 @@ void blink_lines(int * scored_lines,int number_of_scored_lines,int number_of_bli
 }
 
 
-
 void draw_line(int line)
 {
   //print_matrix_state();
   for (int i = 0; i < W ;i++){
-    matrix -> fillRect(unit_pieces*i,unit_pieces*line + offset_height,unit_pieces,unit_pieces,matrix_state[W * line + i]);  
+    matrix -> fillRect(unit_pieces * i,unit_pieces * line + offset_height,unit_pieces,unit_pieces,matrix_state[W * line + i]);  
   }
 }
 
 
-
-
 set<set<int> > get_chunks()
 {
-  int above_line, current_point, counter;
+  int current_point, counter;
   boolean last_line = false;
-  above_line = scored_lines[number_of_scored_lines - 1] - 1 ;
   set<int> set_points,temp_chunk;
   set<set<int> > res;
-  for (int y = above_line + 1;; y--){
+
+  for (int y = scored_lines[number_of_scored_lines - 1] + 1;; y--){
     counter = 0;
     if (y == scored_lines[0] - 1){
       last_line = true;
@@ -529,14 +455,14 @@ set<set<int> > get_chunks()
       current_point = y*W + x;
       if (matrix_state[current_point] == 0){
         counter++;
-      } else {
-        set_points.insert(current_point);
+        } else {
+          set_points.insert(current_point);
 
+        }
       }
-    }
 
-    if (last_line && counter == W) break;
-  }
+      if (last_line && counter == W) break;
+    }
 
   //Let's get chunksssssss
   //inser,erase and find complexity log in size.
@@ -637,7 +563,6 @@ set<int> flood_finding(int current_point,set<int> chunk){
 }
 
 
-
 void update_matrix_state()
 {
   //Serial.println("###################################################################");
@@ -658,9 +583,6 @@ void update_matrix_state()
 
 
 
-
-
-
 boolean get_validated_pixels_piece(Piece * p)
 {
   //Note: return false if there was a non-acceptable pixel.
@@ -673,7 +595,7 @@ boolean get_validated_pixels_piece(Piece * p)
   int aux_index = 0;
   uint8_t b;
 
-  //the origin of each piece is the left top corner of the bitmap 
+  //the origin of each piece is the left top corner
 
   for (uint8_t j=0;j<width;j++) {
     for (uint8_t i=0;i<height;i++) {
@@ -701,7 +623,7 @@ boolean get_validated_pixels_piece(Piece * p)
 
       }
       shift--;
-  }
+    }
   //now we are sure that coordinates are addmissible and therefore we can draw them.
   return true;
 }
@@ -715,7 +637,6 @@ boolean check_unit_piece_pixel(int relocated_x,int relocated_y)
   else
     return false;
 }
-
 
 
 void draw_piece(int color)
@@ -735,203 +656,30 @@ void draw_piece(int color)
 }
 
 
-void game_over()
-{
-  int text_x1 = 33;
-  int text_x2 = -25;
-  char str_1[] = "GAME";
-  char str_2[] = "OVER";
-  int text_min = sizeof(str_1) * -12;
-  int init_servo_degrees = 179;
-  int current_servo_degrees = init_servo_degrees;
-  
-  if (matrix_rotation) {
-    matrix -> setRotation(0);
-    H = matrix -> height();
-    W = matrix -> width();
-    my_servo.write(180);
-    my_servo.attach(servo_pin);
-    delay(500);
-  }
-  matrix -> setTextWrap(false); // Allow text to run off right edge
-  matrix -> setTextSize(1);
-  if (matrix_rotation){
-    while ( current_servo_degrees >= 100 || text_x1 != 4){
-      if (current_servo_degrees % 3 == 0 && text_x1 != 4){
-        text_x1--;
-        text_x2++;
-        print_text(str_1,str_2,text_x1,text_x2);
-      }
-      if (current_servo_degrees >= 100){
-        my_servo.write(current_servo_degrees);
-        delay(15);
-        current_servo_degrees--;
-      }
-    }
-  } else {
-    while (text_x1 != 4){
-      text_x1--;
-      text_x2++;
-      print_text(str_1,str_2,text_x1,text_x2);
-    }
-  }
-  delay(500);
-  my_servo.detach();
-}
-
-
-void print_text(char str_1[],char str_2[], int text_x1, int text_x2){
-
-  matrix -> fillScreen(0);
-  matrix -> setTextColor(white);
-  matrix -> setCursor(text_x1, 0);
-  matrix -> print(str_1);
-  matrix -> setCursor(text_x2, 8);
-  matrix -> print(str_2);
-  delay(90);
-}
-
-
-
-int get_move(boolean read_serial_flag)
-{
-  if (read_serial_flag){
-    //Serial
-
-    if (Serial.available() > 0) {
-      return Serial.read();
-    }
-  }
-  else{
-    //joystick
-
-    return read_joystick();
-  }
-
-}
-
-
-int read_joystick()
-{
-  char chosen_move = '\0';
-  long joystick_x = analogRead(p1_joystick_pin_x);//- offset_x;//offset to setup to 0
-  // this small pause is needed between reading
-  // analog pins, otherwise we get the same value twice
-  //Serial.println(joystick_x);
-  delay(10);        
-  //reads the value of the variable resistor 
-  long joystick_y = analogRead(p1_joystick_pin_y);// - offset_y;
-  
-  
-  if (joystick_y >= 1020 && joystick_x < 1023 && joystick_x > 0 ){
-    chosen_move = 'D';
-  } else if (joystick_y <= 3 && joystick_x < 1023 && joystick_x > 0 ){
-    chosen_move = 'U';
-  } else if (joystick_x <= 3 && joystick_y < 1023 && joystick_y > 0 ){
-    chosen_move = 'L';
-  } else if (joystick_x >= 1020 && joystick_y < 1023 && joystick_y > 0 ){
-    chosen_move = 'R';
-  } else if (digitalRead(joystick_button) == LOW){
-    //hard down
-    previous_move = 'H';
-    delay(140);
-    return 'H';
-  } else {
-    previous_move = ' ';
-  }
-
-  if (chosen_move == 'U'){
-    delay(decrease_delay(chosen_move,180 - difficulty * 90,7));
-  } else if (chosen_move != 'H'){
-    delay(decrease_delay(chosen_move,110 - difficulty * 70,20));
-  }
-  
-  return chosen_move;
-
-
-  
-  //If joystick had good quality would come in handy the next code
-  /*
-  float hip = sqrt(joystick_x * joystick_x + joystick_y * joystick_y);
-  float sine = joystick_y / hip; 
-  float cosine = joystick_x / hip;
-  if (joystick_x > joystick_bounds -> x_right && sine < 0.7071 && sine > -0.7071 && cosine > 0.7071 ){
-    //RIGHT
-    delay(50);
-
-  }
-  else if (joystick_y < joystick_bounds -> y_top && sine < -0.7071 && cosine < 0.7071 && cosine > -0.7071){
-    //UP
-    delay(1);
-    return 'U';
-  }
-  else if (joystick_x < joystick_bounds -> x_left && sine < 0.7071 && sine > -0.7071 && cosine < -0.7071 ){
-    //LEFT
-    delay(50);
-    return 'L';
-  }
-  else if (joystick_y > joystick_bounds -> y_bottom && sine > 0.7071 && cosine < 0.7071 && cosine > -0.7071 ){
-    //DOWN
-    delay(50);
-    return 'D';
-  }*/
-
-}
-
-
 int decrease_delay(char chosen_move,int init_delay,int decrease){
   if (previous_move == chosen_move){
     moves++;
     if (init_delay - decrease*moves < 0)
-      moves--;
-  } else {
-    moves = 0;
-  }
-  previous_move = chosen_move;
-  return init_delay - decrease*moves;
-}
-
-
-void print_matrix_state()
-{
-  for (int i = 0; i < H;i++){
-    for (int j = 0; j < W;j++){
-
-      Serial.print("Position -> (x,y): ");
-      Serial.print(i);
-      Serial.print(",");
-      Serial.println(j);
-      Serial.print("Value -> ");
-      Serial.println(matrix_state[i*W + j]);
-    //delay(50);
+    moves--;
+    } else {
+      moves = 0;
     }
-  }
-//while (1){}
+    previous_move = chosen_move;
+    return init_delay - decrease*moves;
 }
 
 
-void fill_gaps()
+
+void level_up()
 {
-  for (int i = 0;i < matrix -> width();i++){
-    for (int j = 0; j < offset_height;j++){
-      matrix -> drawPixel(i,j,white);
-    }
-  }
-
-  for (int j = 0; j < matrix -> height(); j++){
-    for (int i = matrix -> width() - offset_width; i < matrix -> width(); i++){
-      matrix -> drawPixel(i,j,white);
-    }
+  if (difficulty < 1.0){
+    difficulty += 0.05;
+    default_interval = 9600/H - (difficulty * (8000/H));
+    chance_interval = 1000 - difficulty * 650;
+    current_interval = default_interval;
   }
 }
 
-
-int free_ram () 
-{
-  extern int __heap_start, *__brkval; 
-  int v; 
-  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval); 
-}
 
 
 

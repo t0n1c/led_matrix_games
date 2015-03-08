@@ -2,20 +2,6 @@
 #define piece_h
  
 
-typedef struct{
-   int x;
-   int y;
-}PointStruct;
-
-
-typedef struct{
-   int x_right;
-   int x_left;
-   int y_top;
-   int y_bottom;
-}BoundsStruct;
-
-
 class Piece 
 {
     private:
