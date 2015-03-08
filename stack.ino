@@ -1,8 +1,10 @@
 
+#include <StandardCplusplus.h> //this lib is just to enable syntax highlighting on bitbucket
+
 int interval,stack_width,head_y,head_x,previous_x,diff;
 uint16_t current_color;
-
 boolean flag;
+
 void stack_setup()
 {
 
