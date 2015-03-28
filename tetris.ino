@@ -30,7 +30,7 @@ void tetris_setup()
 
   place_tetris_flag = false;
   create_piece_flag = true;
-  sticky_method = true;
+  sticky_method = false;
   
   
   if (sticky_method){
@@ -242,24 +242,15 @@ void place_and_tetris()
 {
 
   update_matrix_state();
-
-  if (sticky_method){
-    while (check_tetris(&number_of_scored_lines,scored_lines)){
-      total_lines += number_of_scored_lines;
-      sticky_tetris();
-      if (total_lines % 20 == 0){
-        level_up();
-      }
-    }
-
-  } else {
-    //naive method
-    if (check_tetris(&number_of_scored_lines,scored_lines)){
-      total_lines += number_of_scored_lines;
+  while (check_tetris(&number_of_scored_lines,scored_lines)){
+    if (sticky_method){
+      sticky_tetris();  
+    } else {
       naive_tetris();
-      if (total_lines % 20 == 0){
-        level_up();
-      }
+    }
+    total_lines += number_of_scored_lines;
+    if (total_lines % 20 == 0){
+      level_up();
     }
     number_of_scored_lines = 0;
   }
@@ -319,7 +310,7 @@ void sticky_tetris()
     }
   }
 
-  number_of_scored_lines = 0;
+  //number_of_scored_lines = 0;
   //delay(50);
     //while(Serial.read() != 'S'){}
 }
